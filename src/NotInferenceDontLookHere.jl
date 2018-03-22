@@ -1,11 +1,15 @@
 __precompile__(false)
 baremodule NotInferenceDontLookHere
 
+macro code_typed end
 function code_llvm end
 
 using Core.Intrinsics
 using Core.IR
 using InteractiveUtils
+import TimerOutputs
+
+const NI_to = TimerOutputs.TimerOutput()
 
 import Core: print, println, show, write, unsafe_write, STDOUT, STDERR,
              _apply, svec, apply_type, Builtin, IntrinsicFunction, MethodInstance
@@ -14,6 +18,14 @@ const NI = NotInferenceDontLookHere
 export NI
 
 const Base = Core.Main.Base
+
+macro timeit(args...)
+    macroexpand(TimerOutputs, TimerOutputs.timer_expr(:NI_to, args...))
+end
+
+macro verify_error(args...)
+    :(@Base.error $(map(esc, args)...))
+end
 
 const getproperty = getfield
 const setproperty! = setfield!
@@ -35,6 +47,8 @@ end
 function return_type end
 
 base(x) = joinpath()
+const string = Base.string
+getindex(x::Base.RefValue) = Base.getindex(x)
 
 include(NotInferenceDontLookHere, Core.Main.Base.joinpath(
     Core.Main.Base.dirname(Core.Main.Base.@__FILE__), "coreimg2.jl"))
@@ -111,34 +125,28 @@ end
 
 end # module
 
-struct DomTreeNode
-    level::Int
-    children::Vector{Int}
-end
-DomTreeNode() = DomTreeNode(1, Vector{Int}())
-
-struct DomTree
-    idoms::Vector{Int}
-    nodes::Vector{DomTreeNode}
-end
-
-module IRShow
-	using NotInferenceDontLookHere
+IRShow = Module(:IRShow, true)
+eval(IRShow, quote
+    using Base
+    using NotInferenceDontLookHere
     using Base.Meta
     using Core.IR
- 	using .NI: IRCode, ReturnNode, GotoIfNot, CFG, scan_ssa_use!, DomTree, DomTreeNode
+    using .NI: IRCode, ReturnNode, GotoIfNot, CFG, scan_ssa_use!, DomTree, DomTreeNode, Argument
     using AbstractTrees
-	NI.push!(a::Set, b) = Base.push!(a, b)
-	include(Base.joinpath(Base.Sys.BINDIR, Base.DATAROOTDIR, "julia", "base", "compiler/ssair/show.jl"))
-    
+end)
+eval(IRShow, quote
+    NI.push!(a::Set, b) = Base.push!(a, b)
+    include(x) = Base.include(IRShow, x)
+    include(Base.joinpath(Base.Sys.BINDIR, Base.DATAROOTDIR, "julia", "base", "compiler/ssair/show.jl"))
+
     struct DomTreeNodeRef
         tree::DomTree
         idx::Int
     end
-    
+
     AbstractTrees.children(tree::DomTree) = (DomTreeNodeRef(tree, 1),)
     AbstractTrees.children(node::DomTreeNodeRef) = map(x->DomTreeNodeRef(node.tree, x), node.tree.nodes[node.idx].children)
     AbstractTrees.printnode(io::IO, node::DomTree) = print(io, "Entry")
     AbstractTrees.printnode(io::IO, node::DomTreeNodeRef) = print(io, node.idx)
     Base.show(io::IO, tree::DomTree) = print_tree(io, tree)
-end
+end)
