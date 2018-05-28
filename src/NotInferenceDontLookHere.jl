@@ -2,6 +2,7 @@ __precompile__(false)
 baremodule NotInferenceDontLookHere
 
 macro code_typed end
+macro deprecate(args...) end
 function code_llvm end
 
 using Core.Intrinsics
@@ -18,6 +19,7 @@ const NI = NotInferenceDontLookHere
 export NI
 
 const Base = Core.Main.Base
+setindex!(r::Base.RefValue, x) = Base.setindex!(r, x)
 
 macro timeit(args...)
     macroexpand(TimerOutputs, TimerOutputs.timer_expr(:NI_to, args...))
@@ -128,14 +130,15 @@ end # module
 IRShow = Module(:IRShow, true)
 eval(IRShow, quote
     using Base
+    using Base: IdSet, peek
     using NotInferenceDontLookHere
     using Base.Meta
     using Core.IR
     using .NI: IRCode, ReturnNode, GotoIfNot, CFG, scan_ssa_use!, DomTree, DomTreeNode, Argument
-    using AbstractTrees
+    #using AbstractTrees
 end)
 eval(IRShow, quote
-    NI.push!(a::Set, b) = Base.push!(a, b)
+    NI.push!(a::Union{IdSet, Set}, b) = Base.push!(a, b)
     include(x) = Base.include(IRShow, x)
     include(Base.joinpath(Base.Sys.BINDIR, Base.DATAROOTDIR, "julia", "base", "compiler/ssair/show.jl"))
 
